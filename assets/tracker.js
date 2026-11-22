@@ -2,7 +2,11 @@
 const S = StepStats, $ = id => document.getElementById(id);
 const DAY = {day:'numeric',month:'short'}, WEEK = {weekday:'short'};
 const state = {raw:{}, data:null, month:'', view:'overview', compare:[], mode:'average', range:'month', from:'', to:'', logMonth:'all', page:0, records:'dates'};
-const palette = ['#206754','#ad6942','#526ca1','#ac4580','#70619d','#936f22','#327b88','#a64b58','#4b6f23','#68554b'];
+// Calendar-month accents match Augis viewer/views.py, MONTH_BORDER_COLORS.
+const monthColours = ['#25d2c8', '#0158f2', '#7d00ff', '#ff00ed', '#ff006d', '#1aff00', '#c1fe00', '#fee200', '#ffc500', '#ff5900', '#91c6bb', '#8e8e8e'];
+const monthColour = date => monthColours[Number(date.slice(5,7))-1];
+const monthStyle = date => `--month-colour:${monthColour(date)}`;
+const monthDate = date => `<span class="month-date" style="${monthStyle(date)}">${S.dateName(date)}</span>`;
 const paths = {
   steps:'M3 18h6v-5h5V8h7', average:'M3 17l5-6 5 3 7-9M16 5h4v4',
   fire:'M13 3c1 5-3 6-2 10 2-1 3-3 3-5 4 3 6 6 5 9a7 7 0 0 1-13-1c0-4 4-6 4-10 1 1 2 2 2 3 1-2 1-4 1-6Z',
@@ -25,7 +29,7 @@ const cardHead=(title,sub='',extra='')=>`<div class="section-heading"><div><h2>$
 const select=(id,label,options)=>`<label class="control-label">${label}<select id="${id}">${options}</select></label>`;
 function monthPicker(){
   const months=state.data.months, i=months.indexOf(state.month);
-  return `<div class="month-picker"><button class="icon-button" data-act="prev-month" aria-label="Previous month" ${i<=0?'disabled':''}>${icon('left')}</button>
+  return `<div class="month-picker" style="${monthStyle(state.month)}"><button class="icon-button" data-act="prev-month" aria-label="Previous month" ${i<=0?'disabled':''}>${icon('left')}</button>
   <select aria-label="Overview month" id="month">${[...months].reverse().map(m=>option(m,S.monthName(m),state.month)).join('')}</select>
   <button class="icon-button" data-act="next-month" aria-label="Next month" ${i>=months.length-1?'disabled':''}>${icon('right')}</button></div>`;
 }
@@ -33,12 +37,12 @@ function spark(rows){
   if (rows.length<2) return '';
   const hi=Math.max(...rows.map(r=>r.steps),1);
   const points=rows.map((r,i)=>`${(i*185/(rows.length-1)).toFixed(1)},${(100-r.steps*77/hi).toFixed(1)}`).join(' ');
-  return `<svg class="spark" preserveAspectRatio="none" viewBox="0 0 185 110" aria-hidden="true"><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#9aca82" stop-opacity=".45"/><stop offset="1" stop-color="#9aca82" stop-opacity=".03"/></linearGradient></defs><polygon points="0,110 ${points} 185,110" fill="url(#fill)"/><polyline points="${points}" fill="none" stroke="#bcf58c" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+  return `<svg class="spark" preserveAspectRatio="none" viewBox="0 0 185 110" aria-hidden="true"><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop stop-color="var(--month-colour)" stop-opacity=".45"/><stop offset="1" stop-color="var(--month-colour)" stop-opacity=".03"/></linearGradient></defs><polygon points="0,110 ${points} 185,110" fill="url(#fill)"/><polyline points="${points}" fill="none" stroke="var(--month-colour)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function logTable(rows, includeEdit=true){
   if (!rows.length) return empty('No entries for this period.');
   return `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Day</th><th class="num">Steps</th><th class="num">Month avg</th>${includeEdit?'<th><span hidden>Action</span></th>':''}</tr></thead><tbody>
-    ${rows.map(r=>`<tr><td>${S.dateName(r.date)}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td><td class="num">${S.fmt(r.average)}</td>${includeEdit?`<td class="num"><button class="edit-link" data-edit="${r.date}" aria-label="Edit ${S.dateName(r.date)}">Edit</button></td>`:''}</tr>`).join('')}
+    ${rows.map(r=>`<tr><td>${monthDate(r.date)}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td><td class="num">${S.fmt(r.average)}</td>${includeEdit?`<td class="num"><button class="edit-link" data-edit="${r.date}" aria-label="Edit ${S.dateName(r.date)}">Edit</button></td>`:''}</tr>`).join('')}
   </tbody></table></div>`;
 }
 // Draw real calendar positions, including unlogged days, with breaks across missing values.
@@ -56,11 +60,16 @@ function chart(labels,series,{compact=false,days=false,aria='Step chart'}={}){
   for(const i of indexLabels)visual+=`<text x="${x(i)}" y="${h-5}" text-anchor="middle">${labels[i].axis}</text>`;
   for(const s of series){
     if(s.type==='bar'){
-      s.values.forEach((v,i)=>{if(v!=null)visual+=`<rect x="${x(i)-bw/2}" y="${y(v)}" width="${bw}" height="${T+ph-y(v)}" rx="${Math.min(3,bw/3)}" fill="${s.colour}"/>`;});
+      s.values.forEach((v,i)=>{
+        if(v==null)return;
+        // Divide a record bar equally between months that jointly hold the high.
+        const colours=labels[i].colours||[s.colour], width=bw/colours.length;
+        colours.forEach((colour,j)=>{visual+=`<rect x="${x(i)-bw/2+j*width}" y="${y(v)}" width="${width}" height="${T+ph-y(v)}" rx="${colours.length===1?Math.min(3,bw/3):0}" fill="${colour}"/>`;});
+      });
     }else{
       let path='',start=true;
       s.values.forEach((v,i)=>{if(v==null){start=true;return;}path+=(start?'M':'L')+x(i).toFixed(2)+' '+y(v).toFixed(2)+' ';if(start && (i+1===s.values.length || s.values[i+1]==null))visual+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${s.colour}"/>`;start=false;});
-      visual+=`<path d="${path}" fill="none" stroke="${s.colour}" stroke-width="${s.dashed?2.5:2.2}" ${s.dashed?'stroke-dasharray="6 4"':''} stroke-linejoin="round" stroke-linecap="round"/>`;
+      visual+=`<path class="series-line" d="${path}" fill="none" stroke="${s.colour}" stroke-width="2.5" stroke-dasharray="${s.dash||'none'}" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
   }
   const readings=labels.map((d,i)=>[d.name,...series.filter(s=>s.values[i]!=null).map(s=>s.name+' '+S.fmt(s.values[i]))].join(' · '));
@@ -75,7 +84,7 @@ function trendChart(){
   else if(selection==='custom'){first=state.from;last=state.to;}
   else {first=rows[0]?.date;last=rows.at(-1)?.date;}
   const controls=select('trend-range','Chart period',[['month','Selected month'],['year','Selected year'],['all','All dates'],['custom','Custom range']].map(v=>option(...v,selection)).join(''));
-  let inputs='',plot='';
+  let inputs='',plot='',barKey='';
   if(selection==='custom')inputs=`<div class="controls"><label class="control-label">From<input type="date" id="from" value="${first}"></label><label class="control-label">To<input type="date" id="to" value="${last}"></label></div>`;
   if(!first||!last||first>last)plot=empty('Choose an end date on or after the start date.');
   else{
@@ -84,10 +93,12 @@ function trendChart(){
     const dates=[];for(let d=first;d<=last;d=S.add(d,1))dates.push(d);
     const map=new Map(rows.map(r=>[r.date,r]));
     const short=dates.length<=31, multiYear=dates.length>365;
-    const labels=dates.map(d=>({name:S.dateName(d),axis:short?S.dayOf(d):S.show(d,multiYear?{month:'short',year:'2-digit'}:DAY)}));
-    plot=chart(labels,[{name:'Steps',type:'bar',colour:'#538b71',values:dates.map(d=>map.get(d)?.steps??null)},{name:'Month avg',colour:'#b68b37',dashed:true,values:dates.map(d=>map.get(d)?.average??null)}],{days:short,aria:'Daily steps and cumulative monthly average'});
+    const activeColours=[...new Set(dates.map(monthColour))];
+    if(activeColours.length)barKey=activeColours.length===1?activeColours[0]:`linear-gradient(90deg, ${activeColours.join(', ')})`;
+    const labels=dates.map(d=>({name:S.dateName(d),colours:[monthColour(d)],axis:short?S.dayOf(d):S.show(d,multiYear?{month:'short',year:'2-digit'}:DAY)}));
+    plot=chart(labels,[{name:'Steps',type:'bar',values:dates.map(d=>map.get(d)?.steps??null)},{name:'Month avg',colour:'#384a48',dash:'6 4',values:dates.map(d=>map.get(d)?.average??null)}],{days:short,aria:'Daily steps and cumulative monthly average'});
   }
-  return `<section class="card">${cardHead('Daily activity','',controls)}${inputs}<div class="legend"><span><i class="dot"></i>Daily steps</span><span><i class="dash"></i>Month-to-date average</span></div>${plot}</section>`;
+  return `<section class="card">${cardHead('Daily activity','',controls)}${inputs}<div class="legend"><span><i class="dot month-swatch" style="background:${barKey||'var(--line)'}"></i>Daily steps</span><span><i class="dash"></i>Month-to-date average</span></div>${plot}</section>`;
 }
 const keyRow=(k,label,n,detail)=>`<div class="key"><span class="key-icon">${icon(k)}</span><div><div class="small-label">${label}</div><strong>${n}</strong></div><span class="sub">${detail}</span></div>`;
 function overview(){
@@ -102,7 +113,7 @@ function overview(){
   }).join('');
   const above=rows.filter(r=>r.steps>=20000).length;
   return head('Activity overview',`${S.monthName(m)} · ${tracked} logged ${tracked===1?'day':'days'}`,monthPicker())+
-   `<div class="hero-row">${metric('Total steps','steps',S.fmt(total),'','Across the selected month',true,spark(rows))}
+   `<div class="hero-row" style="${monthStyle(m)}">${metric('Total steps','steps',S.fmt(total),'','Across the selected month',true,spark(rows))}
    ${metric('Daily average','average',val(tracked?total/tracked:null),'steps','Per logged day')}
    ${metric('Date records','trophy',S.fmt(count),badge,'Day-of-month highs held')}</div>
    <div class="content-grid"><div class="column">${trendChart()}<section class="card">${cardHead('Daily log',S.monthName(m),link('log','View full log'))}${logTable(rows.slice(-5).reverse())}</section></div>
@@ -130,21 +141,31 @@ function dailyLog(){
 function comparison(){
   const d=state.data,months=state.compare,average=state.mode==='average';
   const dayLabels=Array.from({length:31},(_,i)=>({axis:i+1,name:'Day '+(i+1)}));
-  const series=months.map((m,i)=>{
+  const byCalendarMonth=new Map();
+  for(const m of months){
+    const key=m.slice(5);
+    if(!byCalendarMonth.has(key))byCalendarMonth.set(key,[]);
+    byCalendarMonth.get(key).push(m);
+  }
+  const patterns=['none','8 4','2 4','8 4 2 4','12 3'];
+  const series=months.map(m=>{
     const map=new Map((d.byMonth.get(m)||[]).map(r=>[S.dayOf(r.date),r]));
     const values=dayLabels.map((_,j)=>map.get(j+1)?.[average?'average':'steps']??null);
-    return {name:S.monthName(m,true),colour:palette[i%palette.length],values};
+    const years=byCalendarMonth.get(m.slice(5));
+    const index=years.length-1-years.indexOf(m);
+    const dash=patterns[index]||`${index+3} 3 2 3`;
+    return {name:S.monthName(m,true),colour:monthColour(m),dash,values};
   });
-  const monthChecks=[...d.months].reverse().map(m=>`<label><input type="checkbox" data-compare="${m}" ${months.includes(m)?'checked':''}>${S.monthName(m,true)}</label>`).join('');
+  const monthChecks=[...d.months].reverse().map(m=>`<label style="${monthStyle(m)}"><input type="checkbox" data-compare="${m}" ${months.includes(m)?'checked':''}>${S.monthName(m,true)}</label>`).join('');
   const controls=`<div class="tabs" aria-label="Comparison metric"><button data-mode="average" aria-pressed="${average}" class="${average?'active':''}">Cumulative average</button><button data-mode="steps" aria-pressed="${!average}" class="${!average?'active':''}">Daily steps</button></div>`;
-  const matrix=months.length?`<div class="tablewrap" tabindex="0" aria-label="Scrollable month comparison"><table class="matrix"><thead><tr><th>Day</th>${series.map(s=>`<th class="num">${s.name}</th>`).join('')}${average?'':'<th class="num">All-time record</th>'}</tr></thead><tbody>${dayLabels.map((_,i)=>`<tr><td>${i+1}</td>${series.map((s,j)=>{
+  const matrix=months.length?`<div class="tablewrap" tabindex="0" aria-label="Scrollable month comparison"><table class="matrix"><thead><tr><th>Day</th>${series.map(s=>`<th class="num month-heading" style="--month-colour:${s.colour}">${s.name}</th>`).join('')}${average?'':'<th class="num">All-time record</th>'}</tr></thead><tbody>${dayLabels.map((_,i)=>`<tr><td>${i+1}</td>${series.map((s,j)=>{
     const n=s.values[i],invalid=i+1>S.lastDay(months[j]),record=!average && n!=null && n===d.records[i][0]?.steps;
     return `<td class="num ${invalid?'invalid':record?'record':''}">${invalid?'':val(n)}</td>`;
   }).join('')}${average?'':`<td class="num emphasis">${val(d.records[i][0]?.steps)}</td>`}</tr>`).join('')}</tbody></table></div>`:empty('Select at least one month.');
   return head('Compare months','Compare the same day of each month across your step history.')+`<div class="section-stack"><section class="card">
     ${cardHead('Monthly comparison','',controls)}<details id="month-choices" ${state.choicesOpen?'open':''}><summary>Choose months (${months.length})</summary><div class="checks">${monthChecks}</div><div class="actions" style="margin-top:10px">${quiet('all-months','Select all')}${quiet('clear-months','Clear')}</div></details>
     ${chart(dayLabels,series,{days:true,aria:average?'Monthly cumulative averages':'Daily steps by month'})}
-    <div class="comparison-legend">${series.map(s=>`<span><i class="dot" style="background:${s.colour}"></i>${s.name}</span>`).join('')}</div></section>
+    <div class="comparison-legend">${series.map(s=>`<span><svg class="line-key" viewBox="0 0 26 8" aria-hidden="true"><path class="series-line" d="M2 4h22" stroke="${s.colour}" stroke-width="3" stroke-dasharray="${s.dash}" stroke-linecap="round"/></svg>${s.name}</span>`).join('')}</div></section>
     <section class="card">${cardHead(average?'Cumulative averages by day':'Raw step totals by day',average?'Average of recorded entries from the first of the month through each date.':'Highlighted values hold the all-time record for that day of the month.')}${matrix}</section></div>`;
 }
 function livePeriods(d){
@@ -165,11 +186,11 @@ function recordPage(){
   const tabs=`<div class="tabs" aria-label="Record type">${[['dates','Date records'],['top','Top 30 days'],['periods','Periods & streaks']].map(([v,label])=>`<button data-records="${v}" aria-pressed="${mode===v}" class="${mode===v?'active':''}">${label}</button>`).join('')}</div>`;
   let contents='';
   if (mode==='dates'){
-    const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${ordinal(i+1)}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>S.dateName(r.date)+(r.date===d.newestDateRecord?' <span class="pill" title="Most recently set day-of-month record">New</span>':'')).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
-    const labels=d.records.map((_,i)=>({name:'Day '+(i+1),axis:i+1}));
+    const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${ordinal(i+1)}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>monthDate(r.date)+(r.date===d.newestDateRecord?' <span class="pill" title="Most recently set day-of-month record">New</span>':'')).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+    const labels=d.records.map((w,i)=>({name:'Day '+(i+1),axis:i+1,colours:[...new Set(w.map(r=>monthColour(r.date)))]}));
     contents=`<div class="content-grid"><section class="card">${cardHead('Day-of-month records','Highest count recorded on each of the 31 dates.') }
-    ${chart(labels,[{name:'Record',colour:'#52896f',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month'})}${winnersTable}</section>
-    <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...d.recordCounts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
+    ${chart(labels,[{name:'Record',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month'})}${winnersTable}</section>
+    <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...d.recordCounts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip" style="${monthStyle(m)}"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
   }else if(mode==='top'){
     const cutoff=d.top[29]?.steps??0;
     const ranked=d.top.filter(r=>r.steps>=cutoff);
@@ -177,7 +198,7 @@ function recordPage(){
     const rows=ranked.map((r,i)=>{
       if (!i || r.steps!==ranked[i-1].steps) rank=i+1;
       const label=r.historical?' <span class="visually-hidden">Set a new all-time high</span>':'';
-      return `<tr${r.historical?' class="record-high"':''}><td class="rank">${rank}</td><td>${S.dateName(r.date)}${label}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td></tr>`;
+      return `<tr${r.historical?' class="record-high"':''}><td class="rank">${rank}</td><td>${monthDate(r.date)}${label}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td></tr>`;
     });
     contents=`<section class="card">${cardHead('All-time top 30','Highlighted days set a new all-time high.')}<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Date</th><th>Day</th><th class="num">Steps</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></section>`;
   }else{

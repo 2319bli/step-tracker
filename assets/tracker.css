@@ -42,3 +42,33 @@ dialog{width:min(420px,calc(100% - 32px));border:1px solid var(--line);border-ra
 .record-medal.place-1 { color: #684600; background: #fff1bb; border-color: #d6af45; }
 .record-medal.place-2 { color: #3e4c57; background: #edf1f5; border-color: #a8b2bd; }
 .record-medal.place-3 { color: #794422; background: #fae8d9; border-color: #c89b79; }
+
+/* Use the same month accents for borders and data marks as Augis. */
+.month-picker { border: 2px solid var(--month-colour); }
+.hero {
+  background: color-mix(in srgb, var(--month-colour) 16%, #142827);
+  border-color: var(--month-colour);
+  border-top-width: 3px;
+}
+.hero .metric-icon { color: white; border: 1px solid var(--month-colour); background: #ffffff15; }
+.hero .metric-title, .hero .sub { color: #f2f5f2; }
+.hero .spark { opacity: .95; }
+.month-date { white-space: nowrap; }
+.month-date::before {
+  content: "";
+  display: inline-block;
+  width: .56em;
+  height: .56em;
+  margin-inline-end: .45em;
+  border-radius: 50%;
+  background: var(--month-colour);
+  box-shadow: inset 0 0 0 1px #172a262b;
+  vertical-align: .07em;
+}
+.month-heading { box-shadow: inset 0 -3px var(--month-colour); }
+.record-chip { border-inline-start: 4px solid var(--month-colour); }
+.checks label { border-bottom: 2px solid var(--month-colour); }
+.line-key { width: 26px; height: 8px; overflow: visible; }
+.series-line { filter: drop-shadow(0 .6px .45px #172a2680); }
+.month-swatch { box-shadow: inset 0 0 0 1px #172a262b; }
+.dash { border-color: #384a48; }
