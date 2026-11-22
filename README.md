@@ -12,7 +12,7 @@ For the first browser, or if all connected browsers have been lost, expand **Set
 
 ## Storage and backups
 
-The public history starts with 631 daily totals from 1 March 2025 through 21 November 2026. The original import in `data/steps.json` is a fallback if the live database is temporarily unavailable. The dashboard also caches its last successful read. Cloud writes require a connection. Earlier browser-only edits can be reviewed individually in **Daily log**.
+The bundled history in `data/steps.json` covers 1 October 2024 through 21 November 2026 and serves as a fallback if the live database is temporarily unavailable. The dashboard also caches its last successful read. Cloud writes require a connection. Earlier browser-only edits can be reviewed individually in **Daily log**.
 
 **Download updated tracker**, **Export CSV** and **Site data (JSON)** export the displayed history. Downloaded HTML copies work offline and keep their own browser-local edits.
 
