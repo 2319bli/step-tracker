@@ -14,3 +14,15 @@ dialog{width:min(420px,calc(100% - 32px));border:1px solid var(--line);border-ra
 #device-dialog{width:min(480px,calc(100% - 32px))}#device-dialog p,#device-dialog label{margin:12px 0}
 #device-dialog textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;resize:vertical;font:12px monospace}
 .legacy{margin-bottom:18px}.legacy h2{margin-bottom:8px}
+
+.record-high td { background: #e8f4de; color: #244b36; }
+.record-high td:first-child { border-inline-start: 3px solid #38744d; }
+.record-high td:nth-child(2) { font-weight: 700; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

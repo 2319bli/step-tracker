@@ -154,13 +154,8 @@ function ordinal(n){
   const suffix=n>=11 && n<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th');
   return n+suffix;
 }
-const snapshotRoute='#records/'+NovemberRecords.last;
 function recordPage(){
-  const archived=location.hash===snapshotRoute;
-  const d=archived?NovemberRecords:state.data,mode=state.records;
-  const edition=select('record-edition','Record set',
-    option('live','Latest records',archived?'archive':'live')+
-    option('archive','14 November 2026 snapshot',archived?'archive':'live'));
+  const d=state.data,mode=state.records;
   const tabs=`<div class="tabs" aria-label="Record type">${[['dates','Date records'],['top','Top 30 days'],['periods','Periods & streaks']].map(([v,label])=>`<button data-records="${v}" aria-pressed="${mode===v}" class="${mode===v?'active':''}">${label}</button>`).join('')}</div>`;
   let contents='';
   if (mode==='dates'){
@@ -177,12 +172,12 @@ function recordPage(){
     let rank=0;
     const rows=ranked.map((r,i)=>{
       if (!i || r.steps!==ranked[i-1].steps) rank=i+1;
-      const star=r.historical?' <span aria-label="Historical record" title="Set a new all-time high">*</span>':'';
-      return `<tr><td class="rank">${rank}</td><td>${S.dateName(r.date)}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}${star}</td></tr>`;
+      const label=r.historical?' <span class="visually-hidden">Set a new all-time high</span>':'';
+      return `<tr${r.historical?' class="record-high"':''}><td class="rank">${rank}</td><td>${S.dateName(r.date)}${label}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td></tr>`;
     });
-    contents=`<section class="card">${cardHead('All-time top 30','An asterisk (*) marks a day that set a new all-time high.')}<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Date</th><th>Day</th><th class="num">Steps</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></section>`;
+    contents=`<section class="card">${cardHead('All-time top 30','Highlighted days set a new all-time high.')}<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Date</th><th>Day</th><th class="num">Steps</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></section>`;
   }else{
-    const periods=archived?d.periods:livePeriods(d);
+    const periods=livePeriods(d);
     const periodNames={week:'Calendar week (Mon–Sun)',seven:'Rolling 7 days',month:'Calendar month',rolling:'Rolling 31 days'};
     const periodRows=Object.entries(periodNames).map(([key,label])=>{
       const r=periods[key];
@@ -190,16 +185,12 @@ function recordPage(){
       return `<tr><td>${label}</td><td>${dates}</td><td class="num emphasis">${val(r?.average)}</td></tr>`;
     });
     const streakRows=d.streaks.map(s=>`<tr><td>${S.fmt(s.threshold)}+</td><td class="num emphasis">${s.longest}</td><td>${s.ranges.map(rangeName).join('<br>')||'—'}</td></tr>`);
-    const august=state.data.byMonth.get('2026-08')||[];
-    const augustMean=august.length===31?Math.round(S.sum(august)/31):null;
-    const augustNote=archived && augustMean!==null && augustMean!==periods.month.average?
-      `<p class="caption">The 14 November record lists ${val(periods.month.average)} for August. The daily log averages ${val(augustMean)}.</p>`:'';
-    contents=`<section class="card">${cardHead('Best daily averages','Only complete periods with an entry for every day qualify.')}<div class="tablewrap"><table><thead><tr><th>Period</th><th>Dates</th><th class="num">Steps per day</th></tr></thead><tbody>${periodRows.join('')}</tbody></table></div>${augustNote}</section>
+    contents=`<section class="card">${cardHead('Best daily averages','Only complete periods with an entry for every day qualify.')}<div class="tablewrap"><table><thead><tr><th>Period</th><th>Dates</th><th class="num">Steps per day</th></tr></thead><tbody>${periodRows.join('')}</tbody></table></div></section>
     <section class="card">${cardHead('Longest streaks','Consecutive calendar days at or above each step count.')}<div class="tablewrap"><table><thead><tr><th>Daily steps</th><th class="num">Days</th><th>Dates</th></tr></thead><tbody>${streakRows.join('')}</tbody></table></div>
     ${keyRow('fire','10k streak at latest entry',S.fmt(d.run)+(d.run===1?' day':' days'),d.last?S.dateName(d.last):'—')}</section>`;
   }
-  const sub=archived?'Records as reported on 14 November 2026.':(d.last?'Calculated from the daily log through '+S.dateName(d.last)+'.':'Add a daily entry to start tracking records.');
-  return head('Personal records',sub,edition)+`<div class="section-stack"><div>${tabs}</div>${contents}</div>`;
+  const sub=d.last?'Calculated from the daily log through '+S.dateName(d.last)+'.':'Add a daily entry to start tracking records.';
+  return head('Personal records',sub)+`<div class="section-stack"><div>${tabs}</div>${contents}</div>`;
 }
 function updateData(raw){
   state.raw=raw;state.data=S.analyse(raw);
@@ -213,7 +204,7 @@ function updateData(raw){
 function render(){
   if (!state.data)return;
   showCloudStatus();
-  state.view=location.hash===snapshotRoute?'records':location.hash.slice(1);
+  state.view=location.hash.slice(1);
   if(!['overview','log','compare','records'].includes(state.view))state.view='overview';
   for(const a of document.querySelectorAll('nav a')){if(a.hash==='#'+state.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
   charts=[];const views={overview,log:dailyLog,compare:comparison,records:recordPage};
@@ -423,7 +414,6 @@ $('main').onclick=e=>{
 };
 $('main').onchange=e=>{
   const target=e.target;
-  if(target.id==='record-edition'){location.hash=target.value==='archive'?snapshotRoute:'#records';return;}
   if(target.id==='month')state.month=target.value;
   if(target.id==='log-month'){state.logMonth=target.value;state.page=0;}
   if(target.id==='trend-range')state.range=target.value;
@@ -478,6 +468,7 @@ async function resolveLegacy(button){
   }finally{updateData(await readData());render();}
 }
 async function showRoute(){
+  if(location.hash==='#records/2026-11-14') history.replaceState(null,'','#records');
   render();window.scrollTo(0,0);
   if(!importedScript && approveRoute())await openDevice(approveRoute());
 }
