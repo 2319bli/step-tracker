@@ -54,12 +54,19 @@ const StepStats = (() => {
       }
       prev=date;
     }
+    const recordCounts=new Map();
+    for (const winners of records) {
+      for (const row of winners) {
+        const month=monthOf(row.date);
+        recordCounts.set(month,(recordCounts.get(month)||0)+1);
+      }
+    }
     const months=[...byMonth.keys()];
     const top=[...rows].sort((a,b)=>b.steps-a.steps || a.date.localeCompare(b.date));
     const complete=months.filter(m=>byMonth.get(m).length===lastDay(m));
     const bestMonth=complete.sort((a,b)=>monthsums.get(b)/lastDay(b)-monthsums.get(a)/lastDay(a))[0];
     const {longest,run}=streaks.find(s=>s.threshold===10000);
-    return {rows,byMonth,months,monthsums,records,top,bestMonth,streaks,longest,run,last:prev,newestDateRecord};
+    return {rows,byMonth,months,monthsums,records,recordCounts,top,bestMonth,streaks,longest,run,last:prev,newestDateRecord};
   }
   function bestWindow(rows, length, calendarWeek=false) {
     let total=0,best=null,start=0;

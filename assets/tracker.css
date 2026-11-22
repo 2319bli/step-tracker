@@ -26,3 +26,19 @@ dialog{width:min(420px,calc(100% - 32px));border:1px solid var(--line);border-ra
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.record-medal {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.record-medal.place-1 { color: #684600; background: #fff1bb; border-color: #d6af45; }
+.record-medal.place-2 { color: #3e4c57; background: #edf1f5; border-color: #a8b2bd; }
+.record-medal.place-3 { color: #794422; background: #fae8d9; border-color: #c89b79; }

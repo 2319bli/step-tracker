@@ -92,18 +92,24 @@ function trendChart(){
 const keyRow=(k,label,n,detail)=>`<div class="key"><span class="key-icon">${icon(k)}</span><div><div class="small-label">${label}</div><strong>${n}</strong></div><span class="sub">${detail}</span></div>`;
 function overview(){
   const d=state.data,rows=monthRows(),m=state.month,total=S.sum(rows),maximum=d.top[0],bm=d.bestMonth;
-  const end=rows.at(-1)?.date, tracked=rows.length;
-  let run=0;for(let date=end;date && (state.raw[date]??-1)>=10000;date=S.add(date,-1))run++;
+  const tracked=rows.length, count=d.recordCounts.get(m)||0;
+  const leadingCounts=[...new Set(d.recordCounts.values())].sort((a,b)=>b-a).slice(0,3);
+  const place=leadingCounts.indexOf(count)+1;
+  const badge=place?`<span class="record-medal place-${place}">${ordinal(place)} place</span>`:'';
+  const streakRows=d.streaks.filter(s=>s.threshold>=10000).map(s=>{
+    const detail=s.ranges.length>1?`${s.ranges.length} tied streaks`:s.ranges.length?rangeName(s.ranges[0]):'—';
+    return keyRow('fire',`Longest ${s.threshold/1000}k streak`,S.fmt(s.longest)+(s.longest===1?' day':' days'),detail);
+  }).join('');
   const above=rows.filter(r=>r.steps>=20000).length;
   return head('Activity overview',`${S.monthName(m)} · ${tracked} logged ${tracked===1?'day':'days'}`,monthPicker())+
    `<div class="hero-row">${metric('Total steps','steps',S.fmt(total),'','Across the selected month',true,spark(rows))}
    ${metric('Daily average','average',val(tracked?total/tracked:null),'steps','Per logged day')}
-   ${metric('10k streak','fire',S.fmt(run),run===1?'day':'days',end?'Through '+S.show(end,DAY):'No entries this month')}</div>
+   ${metric('Date records','trophy',S.fmt(count),badge,'Day-of-month highs held')}</div>
    <div class="content-grid"><div class="column">${trendChart()}<section class="card">${cardHead('Daily log',S.monthName(m),link('log','View full log'))}${logTable(rows.slice(-5).reverse())}</section></div>
    <aside class="column"><section class="card">${cardHead('Personal records','All time',link('records','View all'))}
    ${keyRow('trophy','Best day',val(maximum?.steps),maximum?S.dateName(maximum.date):'—')}
    ${keyRow('calendar','Best month average',val(bm?d.monthsums.get(bm)/S.lastDay(bm):null),bm?S.monthName(bm,true):'—')}
-   ${keyRow('fire','Longest 10k streak',S.fmt(d.longest)+' days','Consecutive days')}</section>
+   ${streakRows}</section>
    <section class="card">${cardHead('Month highlights',S.monthName(m))}
    ${keyRow('bolt','20k+ days',String(above),'of '+tracked+' logged')}
    ${keyRow('trophy','Best day this month',val(tracked?Math.max(...rows.map(r=>r.steps)):null),tracked?S.show(rows.reduce((a,b)=>a.steps>=b.steps?a:b).date,{weekday:'short',day:'numeric',month:'short'}):'—')}</section></aside></div>`;
@@ -159,13 +165,11 @@ function recordPage(){
   const tabs=`<div class="tabs" aria-label="Record type">${[['dates','Date records'],['top','Top 30 days'],['periods','Periods & streaks']].map(([v,label])=>`<button data-records="${v}" aria-pressed="${mode===v}" class="${mode===v?'active':''}">${label}</button>`).join('')}</div>`;
   let contents='';
   if (mode==='dates'){
-    const counts=new Map();
-    for(const winners of d.records)for(const winner of winners){const m=S.monthOf(winner.date);counts.set(m,(counts.get(m)||0)+1);}
     const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${ordinal(i+1)}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>S.dateName(r.date)+(r.date===d.newestDateRecord?' <span class="pill" title="Most recently set day-of-month record">New</span>':'')).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
     const labels=d.records.map((_,i)=>({name:'Day '+(i+1),axis:i+1}));
     contents=`<div class="content-grid"><section class="card">${cardHead('Day-of-month records','Highest count recorded on each of the 31 dates.') }
     ${chart(labels,[{name:'Record',colour:'#52896f',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month'})}${winnersTable}</section>
-    <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...counts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
+    <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...d.recordCounts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
   }else if(mode==='top'){
     const cutoff=d.top[29]?.steps??0;
     const ranked=d.top.filter(r=>r.steps>=cutoff);
