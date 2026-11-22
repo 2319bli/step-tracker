@@ -114,9 +114,9 @@ function dailyLog(){
   const slice=reversed.slice(state.page*31,(state.page+1)*31);
   const options=option('all','All months',state.logMonth)+[...d.months].reverse().map(m=>option(m,S.monthName(m),state.logMonth)).join('');
   const downloads='<div class="actions downloads">'+quiet('portable','Download updated tracker')+quiet('export','Export CSV')+quiet('json','Site data (JSON)')+'</div>';
-  const hint=deviceStorage?'Edits are saved in this browser. Download an updated tracker to take them to another device.':'Browser storage is unavailable. Download an updated tracker to keep your edits.';
+  const hint=!importedScript?(StepCloud.paired?'This browser saves entries to Cloudflare.':'Entries come from Cloudflare. Connect a browser to edit them.') : deviceStorage?'Edits are saved in this browser. Download an updated tracker to take them to another device.':'Browser storage is unavailable. Download an updated tracker to keep your edits.';
   return head('Daily log',`${S.fmt(d.rows.length)} recorded days${d.last?' · '+S.dateName(d.rows[0].date)+' – '+S.dateName(d.last):''}`,downloads)+
-    `<section class="card">${cardHead('Step entries',hint,select('log-month','Show',options))}${logTable(slice)}
+    legacyPanel()+`<section class="card">${cardHead('Step entries',hint,select('log-month','Show',options))}${logTable(slice)}
     <div class="table-footer"><span class="sub">${slice.length?`${state.page*31+1}–${state.page*31+slice.length} of ${rows.length} entries`:'0 entries'}</span>
     <div class="actions"><button class="quiet" data-act="prev-page" ${state.page===0?'disabled':''}>Previous</button><button class="quiet" data-act="next-page" ${state.page===pages-1?'disabled':''}>Next</button></div></div></section>`;
 }
@@ -175,6 +175,7 @@ function updateData(raw){
 }
 function render(){
   if (!state.data)return;
+  showCloudStatus();
   state.view=location.hash.slice(1);
   if(!['overview','log','compare','records'].includes(state.view))state.view='overview';
   for(const a of document.querySelectorAll('nav a')){if(a.hash==='#'+state.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
@@ -222,19 +223,54 @@ function localData(){
   }
   return raw;
 }
+let cloudOnline=true, readVersion=0;
+const cacheKey='steptracker.cloud.history.v1';
 async function readData(){
-  if(!published){
-    let seed;
-    if(importedScript)seed=JSON.parse(importedScript.textContent);
-    else{
-      const response=await fetch('data/steps.json',{cache:'no-cache'});
-      if(!response.ok)throw Error('Could not load the published step history. Try again.');
-      seed=await response.json();
-    }
-    if(!validHistory(seed))throw Error('The step history contains an invalid entry.');
-    published=seed;
+  if(importedScript){
+    published=JSON.parse(importedScript.textContent);
+    if(!validHistory(published))throw Error('Invalid imported step history.');
+    return localData();
   }
-  return localData();
+  const version=++readVersion;
+  try{
+    const data=await StepCloud.read();
+    if(!validHistory(data))throw Error('Invalid cloud history.');
+    if(version===readVersion){
+      published=data;cloudOnline=true;
+      try{deviceStorage?.setItem(cacheKey,JSON.stringify(data));}catch{}
+    }
+  }catch(error){
+    if(version===readVersion)cloudOnline=false;
+    if(!published){
+      let seed;
+      try{seed=JSON.parse(deviceStorage?.getItem(cacheKey)||'null');}catch{}
+      if(!validHistory(seed)){
+        const fallback=await fetch('data/steps.json');if(!fallback.ok)throw error;
+        seed=await fallback.json();if(!validHistory(seed))throw error;
+      }
+      if(!published)published=seed;
+    }
+  }
+  return published;
+}
+function pending(){
+  if(importedScript)return [];
+  return Object.entries(localChanges()).sort(([a],[b])=>a.localeCompare(b));
+}
+function legacyPanel(){
+  const old=pending();
+  if(!old.length)return '';
+  return '<section class="card legacy"><h2>Earlier browser edits</h2><p class="caption">Choose which totals to keep. A dash means no entry.</p><div class="tablewrap"><table><thead><tr><th>Date</th><th>Browser</th><th>Cloudflare</th><th>Use</th></tr></thead><tbody>'+old.map(([day,count])=>
+    '<tr><td>'+S.dateName(day)+'</td><td>'+val(count)+'</td><td>'+val(published?.[day])+'</td><td><button class="quiet" data-legacy="'+day+'" data-use="browser">Browser</button> <button class="quiet" data-legacy="'+day+'" data-use="cloud">Cloudflare</button></td></tr>').join('')+'</tbody></table></div></section>';
+}
+function showCloudStatus(){
+  const box=$('cloud-status');box.textContent='';
+  if(importedScript){box.hidden=true;return;}
+  if(!cloudOnline)box.textContent='Cloudflare is unavailable. Showing the last available step history. ';
+  if(pending().length){
+    const a=document.createElement('a');a.href='#log';a.textContent='Review earlier browser edits in Daily log.';box.append(a);
+  }
+  box.hidden=!box.textContent;
 }
 function toast(msg){$('toast').textContent=msg;clearTimeout(toast.timer);toast.timer=setTimeout(()=>{$('toast').textContent='';},3200);}
 let previous=null, confirming=false, busy=false;
@@ -244,12 +280,23 @@ function loadForm(){
   $('entry-hint').textContent=previous===null?'Add a daily total.':'This date already has an entry. Saving updates its total.';
   $('entry-error').textContent='';
 }
-function edit(date){
+let nextEdit;
+async function edit(date){
   if(busy||!state.data)return;
+  if(!importedScript && !StepCloud.paired){
+    try{if(!await StepCloud.connected()){nextEdit={date};await openDevice();return;}}
+    catch(err){toast(err.message);return;}
+  }
   $('entry-date').max=S.today();$('entry-date').value=date||S.today();$('entry-date').disabled=!!date;
   $('dialog-title').textContent=date?'Edit steps':'Log steps';loadForm();$('entry-dialog').showModal();$('entry-count').focus();
 }
 async function persist(date,steps,expected){
+  if(!importedScript){
+    await StepCloud.save(date,steps,expected);cloudOnline=true;++readVersion;
+    if(steps===null)delete published[date];else published[date]=steps;
+    try{deviceStorage?.setItem(cacheKey,JSON.stringify(published));}catch{}
+    return;
+  }
   const write=()=>{
     const changes=localChanges();
     const actual=Object.hasOwn(changes,date)?changes[date]:(published[date]??null);
@@ -267,7 +314,7 @@ async function saveEntry(steps){
     await persist(date,steps,previous);
     const raw={...state.raw};if(steps===null)delete raw[date];else raw[date]=steps;
     updateData(raw);if(steps!==null)state.month=S.monthOf(date);
-    $('entry-dialog').close();render();toast(!deviceStorage?'Updated for this session. Download an updated tracker from Daily log to keep it.':steps===null?'Entry removed.':'Steps saved.');
+    $('entry-dialog').close();render();toast(!importedScript?(steps===null?'Entry removed from Cloudflare.':'Steps saved to Cloudflare.'):!deviceStorage?'Updated for this session. Download an updated tracker from Daily log to keep it.':steps===null?'Entry removed.':'Steps saved.');
     try {updateData(await readData());render();} catch {}
   }catch(err){
     $('entry-error').textContent=err.message;
@@ -298,6 +345,10 @@ async function savePortable(){
   copy.querySelector('#main').innerHTML='<p class="loading" role="status">Loading your steps…</p>';
   copy.querySelector('#toast').textContent='';
   copy.querySelector('#entry-dialog').removeAttribute('open');
+  copy.querySelector('#device-dialog').removeAttribute('open');
+  copy.querySelector('#device-sql').textContent='';
+  copy.querySelector('#cloud-status').textContent='';
+  copy.querySelector('#cloud-status').hidden=true;
   const blob=new Blob(['<!doctype html>\n',copy.outerHTML],{type:'text/html;charset=utf-8'});
   downloadFile(blob,'StepTracker-'+(state.data.last||'entries')+'.html');
 }
@@ -319,6 +370,7 @@ $('remove').onclick=()=>{
 };
 $('main').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.legacy){resolveLegacy(b).catch(err=>toast(err.message));return;}
   if(b.dataset.edit){edit(b.dataset.edit);return;}
   if(b.dataset.mode)state.mode=b.dataset.mode;
   if(b.dataset.records)state.records=b.dataset.records;
@@ -343,10 +395,71 @@ $('main').onchange=e=>{
   const focusId=target.id,focusMonth=target.dataset.compare;render();
   if(focusId)$(focusId)?.focus();else if(focusMonth)document.querySelector('[data-compare="'+focusMonth+'"]')?.focus();
 };
-window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
-window.addEventListener('storage',e=>{if(published && e.key===localKey){updateData(localData());render();}});
+let approvalId=null;
+const approveRoute=()=>location.hash.match(/^#approve\/([0-9a-f]{64})$/)?.[1]||null;
+async function openDevice(target=null){
+  approvalId=target;
+  $('device-error').textContent='';
+  $('device-title').textContent=target?'Approve another browser':'Connect this browser';
+  $('device-action').textContent=target?'Approve browser':'Check connection';
+  $('device-link-area').hidden=!!target;
+  $('device-message').textContent=target?'Approve this request only if you opened the link from your other browser. That browser will be able to edit your public step log.':'Open this approval link on a browser you have already connected, then check the connection here.';
+  if(!target){
+    const id=await StepCloud.id();
+    $('device-link').value='https://2319bli.github.io/step-tracker/#approve/'+id;
+    $('device-sql').value="INSERT INTO step_devices(id) VALUES ('"+id+"') ON CONFLICT(id) DO NOTHING;";
+  }
+  if(!$('device-dialog').open)$('device-dialog').showModal();
+}
+function closeDevice(){
+  $('device-dialog').close();approvalId=null;
+  if(approveRoute())history.replaceState(null,'',location.pathname+'#overview');
+}
+$('device-close').onclick=()=>{nextEdit=null;closeDevice();};
+$('device-dialog').oncancel=()=>{nextEdit=null;approvalId=null;if(approveRoute())history.replaceState(null,'',location.pathname+'#overview');};
+$('copy-device').onclick=async()=>{try{await navigator.clipboard.writeText($('device-link').value);toast('Approval link copied.');}catch{$('device-link').select();}};
+$('device-action').onclick=async()=>{
+  const b=$('device-action');b.disabled=true;
+  try{
+    if(!await StepCloud.connected())throw Error(approvalId?'Open this approval link on a browser already connected to StepTracker.':'This browser is awaiting approval.');
+    if(approvalId)await StepCloud.approve(approvalId);
+    const label=approvalId?'Browser approved.':'This browser is connected.';closeDevice();render();toast(label);
+    if(nextEdit){const {date}=nextEdit;nextEdit=null;await edit(date);}
+  }catch(err){$('device-error').textContent=err.message;}finally{b.disabled=false;}
+};
+async function resolveLegacy(button){
+  const date=button.dataset.legacy,old=localChanges();if(!Object.hasOwn(old,date))return;
+  if(!StepCloud.paired && !await StepCloud.connected()){await openDevice();return;}
+  const local=old[date],expected=published[date]??null;
+  button.disabled=true;
+  try{
+    if(button.dataset.use==='browser')await persist(date,local,expected);
+    const remaining=localChanges();
+    if(remaining[date]===local){delete remaining[date];if(deviceStorage)deviceStorage.setItem(localKey,JSON.stringify(remaining));else memoryChanges=remaining;}
+    toast('Browser edit reviewed.');
+  }finally{updateData(await readData());render();}
+}
+async function showRoute(){
+  render();window.scrollTo(0,0);
+  if(!importedScript && approveRoute())await openDevice(approveRoute());
+}
+window.addEventListener('hashchange',()=>showRoute().catch(err=>toast(err.message)));
+window.addEventListener('storage',e=>{if(published && e.key===localKey){updateData(importedScript?localData():published);render();}});
+let lastRefresh=0;
+async function refreshCloud(){
+  if(importedScript||!state.data||busy||document.hidden||Date.now()-lastRefresh<10000)return;
+  lastRefresh=Date.now();
+  try{updateData(await readData());render();}catch{}
+}
+window.addEventListener('focus',refreshCloud);
+document.addEventListener('visibilitychange',refreshCloud);
+if(!importedScript)setInterval(refreshCloud,60000);
 async function boot(){
-  try{updateData(await readData());state.compare=state.data.months.slice(-3);render();}
-  catch(err){$('main').innerHTML=empty('Your step history could not be loaded.')+quiet('retry','Retry');const p=$('main').querySelector('p');p.textContent=err.message;}
+  try{
+    updateData(await readData());state.compare=state.data.months.slice(-3);
+    await showRoute();
+    if(!importedScript)StepCloud.connected().then(()=>render()).catch(()=>{});
+  }
+  catch(err){$('main').innerHTML=empty('Your step history could not be loaded.')+quiet('retry','Retry');$('main').querySelector('p').textContent=err.message;}
 }
 boot();

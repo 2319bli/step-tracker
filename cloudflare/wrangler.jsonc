@@ -1,0 +1,10 @@
+{
+  "name": "step-tracker-api",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "step-tracker",
+    "database_id": "82dbb414-0c95-4735-b710-770293611897"
+  }]
+}

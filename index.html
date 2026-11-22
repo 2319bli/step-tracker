@@ -12,6 +12,7 @@
     <nav aria-label="Main navigation"><a href="#overview">Overview</a><a href="#log">Daily log</a><a href="#compare">Compare months</a><a href="#records">Records</a></nav>
     <button id="add" class="primary"><span aria-hidden="true">＋</span> Log steps</button>
   </div></header>
+  <div id="cloud-status" class="sync-status" role="status" hidden></div>
   <main id="main" tabindex="-1"><p class="loading" role="status">Loading your steps…</p></main>
   <dialog id="entry-dialog" aria-labelledby="dialog-title">
     <form id="entry-form"><div class="section-heading"><h2 id="dialog-title">Log steps</h2><button type="button" class="icon-button" id="close" aria-label="Close">×</button></div>
@@ -21,7 +22,15 @@
     <div class="dialog-actions"><button type="button" class="danger" id="remove">Remove entry</button><button type="submit" id="save" class="primary">Save steps</button></div>
     </form>
   </dialog>
+  <dialog id="device-dialog" aria-labelledby="device-title">
+    <div class="section-heading"><h2 id="device-title">Connect this browser</h2><button type="button" class="icon-button" id="device-close" aria-label="Close">×</button></div>
+    <p id="device-message"></p>
+    <div id="device-link-area" hidden><label>Approval link<input id="device-link" readonly></label><button type="button" class="quiet" id="copy-device">Copy approval link</button>
+      <details><summary>Set up or recover the first browser</summary><p>Run this command in the step-tracker database console in your Cloudflare dashboard, then check the connection.</p><textarea id="device-sql" rows="4" readonly aria-label="Cloudflare approval SQL"></textarea></details>
+    </div>
+    <p id="device-error" class="error" role="alert"></p><button type="button" class="primary" id="device-action">Check connection</button>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script src="assets/stats.js"></script><script src="assets/tracker.js"></script>
+  <script src="assets/stats.js"></script><script src="assets/cloud.js"></script><script src="assets/tracker.js"></script>
 </body>
 </html>

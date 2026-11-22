@@ -1,9 +1,21 @@
 # StepTracker
 
-[Open the step tracker](https://2319bli.github.io/step-tracker/)
+[Open StepTracker](https://2319bli.github.io/step-tracker/)
 
-StepTracker displays daily totals, month-to-date averages, month comparisons, streaks and personal records. The public history is stored in `data/steps.json` as ISO dates and whole-number step counts.
+GitHub Pages serves the dashboard. It reads daily totals from Cloudflare D1 through the StepTracker Worker. Approved browsers can add, correct and remove daily totals. The tracker checks the previous value on each save to prevent one device silently overwriting another device's edit.
 
-Use **Log steps** to add or correct a day. Edits stay in the current browser. **Daily log → Download updated tracker** makes a self-contained copy of that browser's log. To update the public history, export **Site data (JSON)** and commit it as `data/steps.json`.
+## Connect a device
 
-GitHub Pages serves the root of `main`. All site assets use relative paths and run without a build step.
+Choose **Log steps** on the new browser. Open its approval link on a browser already connected to StepTracker and select **Approve browser**. Return to the new browser and choose **Check connection**. The link contains a public device fingerprint. The private device token stays in that browser and is sent only to the StepTracker Worker when authorising an operation.
+
+For the first browser, or if all connected browsers have been lost, expand **Set up or recover the first browser** and run the displayed command in the private Cloudflare D1 console for `step-tracker`. To revoke a device, remove its fingerprint from `step_devices`.
+
+## Storage and backups
+
+The public history starts with 631 daily totals from 1 March 2025 through 21 November 2026. The original import in `data/steps.json` is a fallback if the live database is temporarily unavailable. The dashboard also caches its last successful read. Cloud writes require a connection. Earlier browser-only edits can be reviewed individually in **Daily log**.
+
+**Download updated tracker**, **Export CSV** and **Site data (JSON)** export the displayed history. Downloaded HTML copies work offline and keep their own browser-local edits.
+
+## Deployment
+
+Pages publishes the root of `main` without a build step. The Worker source, D1 schema and deployment configuration are in `cloudflare/`. After editing the Worker, deploy it separately with `npx wrangler deploy --config cloudflare/wrangler.jsonc` from an authorised Cloudflare account.

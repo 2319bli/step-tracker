@@ -9,3 +9,8 @@ dialog{width:min(420px,calc(100% - 32px));border:1px solid var(--line);border-ra
 @media(prefers-reduced-motion:no-preference){button,a{transition:background-color .15s ease,color .15s ease}}
 
 .downloads{flex-wrap:wrap}
+
+.sync-status{padding:9px 5%;background:#f4ecd6;color:#51472e;font-size:14px}.sync-status a{font-weight:650}
+#device-dialog{width:min(480px,calc(100% - 32px))}#device-dialog p,#device-dialog label{margin:12px 0}
+#device-dialog textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;resize:vertical;font:12px monospace}
+.legacy{margin-bottom:18px}.legacy h2{margin-bottom:8px}
