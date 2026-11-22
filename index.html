@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#153f37"><title>StepTracker</title>
+  <meta name="description" content="Explore daily step counts, monthly averages, streaks and personal records.">
+  <link rel="icon" href="assets/favicon.svg"><link rel="stylesheet" href="assets/tracker.css">
+</head>
+<body>
+  <header class="topbar"><div class="top-inner">
+    <a href="#overview" class="brand"><span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span>StepTracker</a>
+    <nav aria-label="Main navigation"><a href="#overview">Overview</a><a href="#log">Daily log</a><a href="#compare">Compare months</a><a href="#records">Records</a></nav>
+    <button id="add" class="primary"><span aria-hidden="true">＋</span> Log steps</button>
+  </div></header>
+  <main id="main" tabindex="-1"><p class="loading" role="status">Loading your steps…</p></main>
+  <dialog id="entry-dialog" aria-labelledby="dialog-title">
+    <form id="entry-form"><div class="section-heading"><h2 id="dialog-title">Log steps</h2><button type="button" class="icon-button" id="close" aria-label="Close">×</button></div>
+    <label>Date<input type="date" id="entry-date" required></label>
+    <label>Steps<input type="number" inputmode="numeric" id="entry-count" min="0" max="2147483647" step="1" required placeholder="Enter your daily total"></label>
+    <p id="entry-hint" class="muted" aria-live="polite"></p><p id="entry-error" class="error" role="alert"></p>
+    <div class="dialog-actions"><button type="button" class="danger" id="remove">Remove entry</button><button type="submit" id="save" class="primary">Save steps</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="assets/stats.js"></script><script src="assets/tracker.js"></script>
+</body>
+</html>
