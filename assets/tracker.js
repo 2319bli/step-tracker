@@ -141,28 +141,65 @@ function comparison(){
     <div class="comparison-legend">${series.map(s=>`<span><i class="dot" style="background:${s.colour}"></i>${s.name}</span>`).join('')}</div></section>
     <section class="card">${cardHead(average?'Cumulative averages by day':'Raw step totals by day',average?'Average of recorded entries from the first of the month through each date.':'Highlighted values hold the all-time record for that day of the month.')}${matrix}</section></div>`;
 }
+function livePeriods(d){
+  const m=d.bestMonth;
+  return {
+    week:S.bestWindow(d.rows,7,true), seven:S.bestWindow(d.rows,7),
+    month:m?{month:m,average:d.monthsums.get(m)/S.lastDay(m)}:null,
+    rolling:S.bestWindow(d.rows,31)
+  };
+}
+const rangeName=r=>S.dateName(r.start)+' – '+S.dateName(r.end);
+function ordinal(n){
+  const suffix=n>=11 && n<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th');
+  return n+suffix;
+}
+const snapshotRoute='#records/'+NovemberRecords.last;
 function recordPage(){
-  const d=state.data,mode=state.records;
+  const archived=location.hash===snapshotRoute;
+  const d=archived?NovemberRecords:state.data,mode=state.records;
+  const edition=select('record-edition','Record set',
+    option('live','Latest records',archived?'archive':'live')+
+    option('archive','14 November 2026 snapshot',archived?'archive':'live'));
   const tabs=`<div class="tabs" aria-label="Record type">${[['dates','Date records'],['top','Top 30 days'],['periods','Periods & streaks']].map(([v,label])=>`<button data-records="${v}" aria-pressed="${mode===v}" class="${mode===v?'active':''}">${label}</button>`).join('')}</div>`;
   let contents='';
   if (mode==='dates'){
     const counts=new Map();
     for(const winners of d.records)for(const winner of winners){const m=S.monthOf(winner.date);counts.set(m,(counts.get(m)||0)+1);}
-    const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${i+1}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>S.dateName(r.date)).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+    const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${ordinal(i+1)}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>S.dateName(r.date)+(r.date===d.newestDateRecord?' <span class="pill" title="Most recently set day-of-month record">New</span>':'')).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
     const labels=d.records.map((_,i)=>({name:'Day '+(i+1),axis:i+1}));
     contents=`<div class="content-grid"><section class="card">${cardHead('Day-of-month records','Highest count recorded on each of the 31 dates.') }
     ${chart(labels,[{name:'Record',colour:'#52896f',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month'})}${winnersTable}</section>
     <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...counts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
   }else if(mode==='top'){
-    contents=`<section class="card">${cardHead('All-time top 30','Ranked by daily step count.')}<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Date</th><th>Day</th><th class="num">Steps</th></tr></thead><tbody>${d.top.filter(r=>r.steps>=(d.top[Math.min(29,d.top.length-1)]?.steps??0)).map(r=>`<tr><td class="rank">${d.top.findIndex(x=>x.steps===r.steps)+1}</td><td>${S.dateName(r.date)}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    const cutoff=d.top[29]?.steps??0;
+    const ranked=d.top.filter(r=>r.steps>=cutoff);
+    let rank=0;
+    const rows=ranked.map((r,i)=>{
+      if (!i || r.steps!==ranked[i-1].steps) rank=i+1;
+      const star=r.historical?' <span aria-label="Historical record" title="Set a new all-time high">*</span>':'';
+      return `<tr><td class="rank">${rank}</td><td>${S.dateName(r.date)}</td><td>${S.show(r.date,WEEK)}</td><td class="num emphasis">${S.fmt(r.steps)}${star}</td></tr>`;
+    });
+    contents=`<section class="card">${cardHead('All-time top 30','An asterisk (*) marks a day that set a new all-time high.')}<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Date</th><th>Day</th><th class="num">Steps</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></section>`;
   }else{
-    const week=S.bestWindow(d.rows,7,true),seven=S.bestWindow(d.rows,7),rolling=S.bestWindow(d.rows,31),bm=d.bestMonth;
-    const span=r=>r?S.dateName(r.start)+' – '+S.dateName(r.end):'—';
-    const periods=[['Calendar week (Mon–Sun)',week?.average,span(week)],['Rolling 7 days',seven?.average,span(seven)],['Calendar month',bm?d.monthsums.get(bm)/S.lastDay(bm):null,bm?S.monthName(bm):'—'],['Rolling 31 days',rolling?.average,span(rolling)]];
-    contents=`<section class="card">${cardHead('Best daily averages','Only complete periods with an entry for every day qualify.')}<div class="tablewrap"><table><thead><tr><th>Period</th><th>Dates</th><th class="num">Steps per day</th></tr></thead><tbody>${periods.map(([label,n,detail])=>`<tr><td>${label}</td><td>${detail}</td><td class="num emphasis">${val(n)}</td></tr>`).join('')}</tbody></table></div></section>
-    <section class="card">${cardHead('10k streaks')}${keyRow('fire','At latest entry',d.run+' days',d.last?S.dateName(d.last):'—')}${keyRow('trophy','Longest recorded',d.longest+' days','All time')}</section>`;
+    const periods=archived?d.periods:livePeriods(d);
+    const periodNames={week:'Calendar week (Mon–Sun)',seven:'Rolling 7 days',month:'Calendar month',rolling:'Rolling 31 days'};
+    const periodRows=Object.entries(periodNames).map(([key,label])=>{
+      const r=periods[key];
+      const dates=r?(r.month?S.monthName(r.month):rangeName(r)):'—';
+      return `<tr><td>${label}</td><td>${dates}</td><td class="num emphasis">${val(r?.average)}</td></tr>`;
+    });
+    const streakRows=d.streaks.map(s=>`<tr><td>${S.fmt(s.threshold)}+</td><td class="num emphasis">${s.longest}</td><td>${s.ranges.map(rangeName).join('<br>')||'—'}</td></tr>`);
+    const august=state.data.byMonth.get('2026-08')||[];
+    const augustMean=august.length===31?Math.round(S.sum(august)/31):null;
+    const augustNote=archived && augustMean!==null && augustMean!==periods.month.average?
+      `<p class="caption">The 14 November record lists ${val(periods.month.average)} for August. The daily log averages ${val(augustMean)}.</p>`:'';
+    contents=`<section class="card">${cardHead('Best daily averages','Only complete periods with an entry for every day qualify.')}<div class="tablewrap"><table><thead><tr><th>Period</th><th>Dates</th><th class="num">Steps per day</th></tr></thead><tbody>${periodRows.join('')}</tbody></table></div>${augustNote}</section>
+    <section class="card">${cardHead('Longest streaks','Consecutive calendar days at or above each step count.')}<div class="tablewrap"><table><thead><tr><th>Daily steps</th><th class="num">Days</th><th>Dates</th></tr></thead><tbody>${streakRows.join('')}</tbody></table></div>
+    ${keyRow('fire','10k streak at latest entry',S.fmt(d.run)+(d.run===1?' day':' days'),d.last?S.dateName(d.last):'—')}</section>`;
   }
-  return head('Personal records','Your strongest days, streaks and sustained averages.')+`<div class="section-stack"><div>${tabs}</div>${contents}</div>`;
+  const sub=archived?'Records as reported on 14 November 2026.':(d.last?'Calculated from the daily log through '+S.dateName(d.last)+'.':'Add a daily entry to start tracking records.');
+  return head('Personal records',sub,edition)+`<div class="section-stack"><div>${tabs}</div>${contents}</div>`;
 }
 function updateData(raw){
   state.raw=raw;state.data=S.analyse(raw);
@@ -176,7 +213,7 @@ function updateData(raw){
 function render(){
   if (!state.data)return;
   showCloudStatus();
-  state.view=location.hash.slice(1);
+  state.view=location.hash===snapshotRoute?'records':location.hash.slice(1);
   if(!['overview','log','compare','records'].includes(state.view))state.view='overview';
   for(const a of document.querySelectorAll('nav a')){if(a.hash==='#'+state.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
   charts=[];const views={overview,log:dailyLog,compare:comparison,records:recordPage};
@@ -386,6 +423,7 @@ $('main').onclick=e=>{
 };
 $('main').onchange=e=>{
   const target=e.target;
+  if(target.id==='record-edition'){location.hash=target.value==='archive'?snapshotRoute:'#records';return;}
   if(target.id==='month')state.month=target.value;
   if(target.id==='log-month'){state.logMonth=target.value;state.page=0;}
   if(target.id==='trend-range')state.range=target.value;

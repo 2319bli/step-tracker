@@ -22,26 +22,44 @@ const StepStats = (() => {
   function analyse(raw) {
     const byMonth = new Map(), records = Array.from({length:31},()=>[]), rows = [];
     const monthsums = new Map();
-    let longest = 0, run = 0, prev = null;
+    const streaks = [5000,10000,15000,20000,25000].map(threshold=>({
+      threshold, run:0, start:null, longest:0, ranges:[]
+    }));
+    let high=-1, prev=null, newestDateRecord=null;
     for (const date of Object.keys(raw).sort()) {
       const steps=raw[date], m=monthOf(date);
       if (!byMonth.has(m)) {byMonth.set(m,[]);monthsums.set(m,0);}
       const group=byMonth.get(m), total=monthsums.get(m)+steps;
       monthsums.set(m,total);
       const average=Math.round(total/(group.length+1));
-      const row={date,steps,average};
+      const row={date,steps,average,historical:steps>high};
+      high=Math.max(high,steps);
       rows.push(row);group.push(row);
       const winners=records[dayOf(date)-1];
-      if (!winners.length || steps>winners[0].steps) winners.splice(0,winners.length,row);
+      if (!winners.length || steps>winners[0].steps) {
+        winners.splice(0,winners.length,row);
+        newestDateRecord=date;
+      }
       else if (steps===winners[0].steps) winners.push(row);
-      run=steps>=10000 ? (prev && add(prev,1)===date ? run+1 : 1) : 0;
-      longest=Math.max(longest,run);prev=date;
+      const consecutive=prev!==null && add(prev,1)===date;
+      for (const streak of streaks) {
+        if (!consecutive || steps<streak.threshold) streak.run=0;
+        if (steps<streak.threshold) continue;
+        if (streak.run===0) streak.start=date;
+        streak.run++;
+        if (streak.run<streak.longest) continue;
+        if (streak.run>streak.longest) streak.ranges=[];
+        streak.longest=streak.run;
+        streak.ranges.push({start:streak.start,end:date});
+      }
+      prev=date;
     }
     const months=[...byMonth.keys()];
     const top=[...rows].sort((a,b)=>b.steps-a.steps || a.date.localeCompare(b.date));
     const complete=months.filter(m=>byMonth.get(m).length===lastDay(m));
     const bestMonth=complete.sort((a,b)=>monthsums.get(b)/lastDay(b)-monthsums.get(a)/lastDay(a))[0];
-    return {rows,byMonth,months,monthsums,records,top,bestMonth,longest,run,last:prev};
+    const {longest,run}=streaks.find(s=>s.threshold===10000);
+    return {rows,byMonth,months,monthsums,records,top,bestMonth,streaks,longest,run,last:prev,newestDateRecord};
   }
   function bestWindow(rows, length, calendarWeek=false) {
     let total=0,best=null,start=0;
