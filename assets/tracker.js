@@ -46,13 +46,13 @@ function logTable(rows, includeEdit=true){
   </tbody></table></div>`;
 }
 // Draw real calendar positions, including unlogged days, with breaks across missing values.
-function chart(labels,series,{compact=false,days=false,aria='Step chart'}={}){
+function chart(labels,series,{compact=false,days=false,aria='Step chart',defs=''}={}){
   if (!labels.length||!series.some(s=>s.values.some(Number.isFinite))) return empty('No entries for this chart.');
   const w=compact?400:790,h=compact?212:255,L=43,R=9,T=12,B=27,pw=w-L-R,ph=h-T-B;
   const max=Math.max(1,...series.flatMap(s=>s.values).filter(Number.isFinite)), rough=max/4;
   const power=10**Math.floor(Math.log10(rough)), step=[1,2,2.5,5,10].map(x=>x*power).find(x=>x>=rough), ceil=Math.ceil(max/step)*step;
   const x=i=>L+(i+.5)*pw/labels.length, y=v=>T+ph-ph*v/ceil, bw=Math.max(.5,pw/labels.length*.72);
-  let visual='';
+  let visual=defs ? `<defs>${defs}</defs>` : '';
   for(let a=0;a<=ceil;a+=step) visual+=`<line x1="${L}" x2="${w-R}" y1="${y(a)}" y2="${y(a)}" stroke="#dce4dc" stroke-dasharray="3 4"/><text x="${L-7}" y="${y(a)+4}" text-anchor="end">${a>=1000?(a/1000)+'k':a}</text>`;
   const indexLabels=new Set([0,labels.length-1]);
   if(days && labels.length<=31){for(let i=4;i<labels.length-2;i+=5)indexLabels.add(i);}
@@ -187,9 +187,19 @@ function recordPage(){
   let contents='';
   if (mode==='dates'){
     const winnersTable=`<div class="tablewrap"><table><thead><tr><th>Day of month</th><th class="num">Record</th><th>Set on</th></tr></thead><tbody>${d.records.map((w,i)=>`<tr><td>${ordinal(i+1)}</td><td class="num emphasis">${val(w[0]?.steps)}</td><td>${w.map(r=>monthDate(r.date)+(r.date===d.newestDateRecord?' <span class="pill" title="Most recently set day-of-month record">New</span>':'')).join(', ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
-    const labels=d.records.map((w,i)=>({name:'Day '+(i+1),axis:i+1,colours:[...new Set(w.map(r=>monthColour(r.date)))]}));
-    contents=`<div class="content-grid"><section class="card">${cardHead('Day-of-month records','Highest count recorded on each of the 31 dates.') }
-    ${chart(labels,[{name:'Record',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month'})}${winnersTable}</section>
+    const stripeId=colour=>'record-2025-'+colour.slice(1);
+    const stripes=monthColours.map(colour=>`<pattern id="${stripeId(colour)}" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="${colour}"/><rect width="2" height="7" fill="#172a26" fill-opacity=".65"/>
+      <rect x="2" width="1" height="7" fill="white" fill-opacity=".65"/></pattern>`).join('');
+    const labels=d.records.map((winners,i)=>({
+      name:'Day '+(i+1),axis:i+1,
+      colours:winners.map(({date})=>{
+        const colour=monthColour(date);
+        return date.startsWith('2025-') ? `url(#${stripeId(colour)})` : colour;
+      })
+    }));
+    contents=`<div class="content-grid"><section class="card">${cardHead('Day-of-month records','Highest count recorded on each of the 31 dates. Diagonal stripes mark 2025 records.') }
+    ${chart(labels,[{name:'Record',type:'bar',values:d.records.map(w=>w[0]?.steps??null)}],{days:true,aria:'All-time records by day of the month',defs:stripes})}${winnersTable}</section>
     <section class="card">${cardHead('Records by month','Tied dates credit each holder.')}<div class="record-list">${[...d.recordCounts].sort((a,b)=>b[1]-a[1]||b[0].localeCompare(a[0])).map(([m,n])=>`<div class="record-chip" style="${monthStyle(m)}"><strong>${n} ${n===1?'record':'records'}</strong><span class="sub">${S.monthName(m,true)}</span></div>`).join('')}</div></section></div>`;
   }else if(mode==='top'){
     const cutoff=d.top[29]?.steps??0;
