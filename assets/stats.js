@@ -19,6 +19,18 @@ const StepStats = (() => {
   const monthName = (m, short=false) => show(m+'-01', {month:short?'short':'long',year:'numeric'});
   const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const sum = rows => rows.reduce((s,r)=>s+r.steps,0);
+  const weekdayIndex = date => (parse(date).getUTCDay()+6)%7;
+  const startOfWeek = date => add(date,-weekdayIndex(date));
+  function weekdayAverages(rows, from, to) {
+    const groups=Array.from({length:7},()=>({total:0,count:0}));
+    for (const row of rows) {
+      if (row.date<from || row.date>to) continue;
+      const group=groups[weekdayIndex(row.date)];
+      group.total+=row.steps;
+      group.count++;
+    }
+    return groups.map(({total,count})=>({count,average:count ? total/count : null}));
+  }
   function analyse(raw) {
     const byMonth = new Map(), records = Array.from({length:31},()=>[]), rows = [];
     const monthsums = new Map();
@@ -79,6 +91,6 @@ const StepStats = (() => {
     }
     return best;
   }
-  return {fmt,parse,iso,add,dayOf,monthOf,lastDay,dayIn,show,dateName,monthName,today,sum,analyse,bestWindow};
+  return {fmt,parse,iso,add,dayOf,monthOf,lastDay,dayIn,show,dateName,monthName,today,sum,analyse,bestWindow,startOfWeek,weekdayAverages};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports=StepStats;

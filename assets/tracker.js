@@ -2,6 +2,8 @@
 const S = StepStats, $ = id => document.getElementById(id);
 const DAY = {day:'numeric',month:'short'}, WEEK = {weekday:'short'};
 const state = {raw:{}, data:null, month:'', view:'overview', compare:[], mode:'average', range:'month', from:'', to:'', logMonth:'all', page:0, records:'dates'};
+const weekly = {start:null, period:'all', month:'', year:'', from:null, to:null};
+const weekdayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 // Calendar-month accents match Augis viewer/views.py, MONTH_BORDER_COLORS.
 const monthColours = ['#25d2c8', '#0158f2', '#7d00ff', '#ff00ed', '#ff006d', '#1aff00', '#c1fe00', '#fee200', '#ffc500', '#ff5900', '#91c6bb', '#8e8e8e'];
 const monthColour = date => monthColours[Number(date.slice(5,7))-1];
@@ -125,6 +127,90 @@ function overview(){
    ${keyRow('bolt','20k+ days',String(above),'of '+tracked+' logged')}
    ${keyRow('trophy','Best day this month',val(tracked?Math.max(...rows.map(r=>r.steps)):null),tracked?S.show(rows.reduce((a,b)=>a.steps>=b.steps?a:b).date,{weekday:'short',day:'numeric',month:'short'}):'—')}</section></aside></div>`;
 }
+function weekBounds(){
+  const last=state.data.last||S.today();
+  return {first:S.startOfWeek(state.data.rows[0]?.date||last),latest:S.startOfWeek(last)};
+}
+function selectedWeek(){
+  const {first,latest}=weekBounds();
+  if(!weekly.start || weekly.start>latest)return latest;
+  return weekly.start<first ? first : weekly.start;
+}
+function weekdayRange(){
+  const last=state.data.last||S.today();
+  switch(weekly.period){
+    case 'week':{
+      const from=selectedWeek();
+      return {from,to:S.add(from,6)};
+    }
+    case 'month':{
+      const month=weekly.month||S.monthOf(last);
+      return {from:month+'-01',to:S.dayIn(month,S.lastDay(month))};
+    }
+    case 'year':{
+      const year=weekly.year||last.slice(0,4);
+      return {from:year+'-01-01',to:year+'-12-31'};
+    }
+    case 'custom':return {from:weekly.from,to:weekly.to};
+    default:return {from:state.data.rows[0]?.date||last,to:last};
+  }
+}
+function stepBar(value,max,colour='var(--green)'){
+  if(value==null)return '';
+  const percent=max ? 100*value/max : 0;
+  return `<span aria-hidden="true" class="step-bar"><i style="width:${percent}%;background:${colour}"></i></span>`;
+}
+function weekdayPanel(){
+  const {from,to}=weekdayRange();
+  const periods=[['all','All dates'],['week','Selected week'],['month','Calendar month'],['year','Calendar year'],['custom','Custom dates']];
+  let controls=select('weekday-period','Period',periods.map(([key,name])=>option(key,name,weekly.period)).join(''));
+  const months=[...state.data.months].reverse();
+  if(weekly.period==='month'){
+    controls+=select('weekday-month','Month',months.map(m=>option(m,S.monthName(m),from.slice(0,7))).join(''));
+  }else if(weekly.period==='year'){
+    const years=[...new Set(months.map(m=>m.slice(0,4)))];
+    controls+=select('weekday-year','Year',years.map(y=>option(y,y,from.slice(0,4))).join(''));
+  }else if(weekly.period==='custom'){
+    controls+=`<label class="control-label">From<input id="weekday-from" type="date" value="${from||''}"></label>
+      <label class="control-label">To<input id="weekday-to" type="date" value="${to||''}"></label>`;
+  }
+  let result;
+  if(!from||!to)result=empty('Choose a start and end date.');
+  else if(from>to)result=empty('Choose an end date on or after the start date.');
+  else{
+    const groups=S.weekdayAverages(state.data.rows,from,to);
+    const max=Math.max(...groups.map(g=>g.average??0));
+    const rows=groups.map(({count,average},i)=>`<tr><th scope="row">${weekdayNames[i]}</th>
+      <td class="num">${count}</td><td class="num emphasis">${val(average)}${stepBar(average,max)}</td></tr>`).join('');
+    result=`<p class="period-dates">${S.dateName(from)} – ${S.dateName(to)}</p>
+      ${groups.some(g=>g.count)?'':empty('No entries in this period.')}
+      <table class="week-table"><thead><tr><th>Weekday</th><th class="num">Logged days</th><th class="num">Average steps</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  return `<section class="card">${cardHead('Weekday averages','Each average uses the logged days for that weekday.')}
+    <div class="controls">${controls}</div>${result}</section>`;
+}
+function weeklyPage(){
+  if(!state.data.rows.length)return head('Weekly activity','Log a day to see your weeks and weekday averages.');
+  const {first,latest}=weekBounds(), start=selectedWeek(), end=S.add(start,6);
+  const picker=`<div class="week-picker">
+    <button class="icon-button" data-act="prev-week" aria-label="Previous week" ${start===first?'disabled':''}>${icon('left')}</button>
+    <label class="control-label">Jump to date<input type="date" id="week-date" min="${first}" max="${S.add(latest,6)}" value="${start}"></label>
+    <button class="icon-button" data-act="next-week" aria-label="Next week" ${start===latest?'disabled':''}>${icon('right')}</button></div>`;
+  const days=weekdayNames.map((name,i)=>{
+    const date=S.add(start,i);
+    return {name,date,steps:state.raw[date]??null};
+  });
+  const logged=days.filter(day=>day.steps!=null), total=S.sum(logged);
+  const max=Math.max(0,...logged.map(day=>day.steps));
+  const rows=days.map(({name,date,steps})=>`<tr><th scope="row">${name}</th><td>${monthDate(date)}</td>
+    <td class="num emphasis">${val(steps)}${stepBar(steps,max,monthColour(date))}</td></tr>`).join('');
+  return head('Weekly activity',rangeName({start,end}),picker)+`<div class="weekly-grid"><section class="card">
+    ${cardHead('Week summary',logged.length+' of 7 days logged')}
+    <dl class="week-totals"><div><dt>Total steps</dt><dd>${val(logged.length?total:null)}</dd></div>
+    <div><dt>Daily average</dt><dd>${val(logged.length?total/logged.length:null)}</dd></div></dl>
+    <table class="week-table"><thead><tr><th>Day</th><th>Date</th><th class="num">Steps</th></tr></thead><tbody>${rows}</tbody></table></section>
+    ${weekdayPanel()}</div>`;
+}
 function dailyLog(){
   const d=state.data, rows=state.logMonth==='all'?d.rows:(d.byMonth.get(state.logMonth)||[]), reversed=[...rows].reverse(), pages=Math.max(1,Math.ceil(rows.length/31));
   state.page=Math.min(state.page,pages-1);
@@ -231,6 +317,8 @@ function updateData(raw){
   state.raw=raw;state.data=S.analyse(raw);
   const months=state.data.months, last=state.data.last||S.today();
   if (!months.includes(state.month))state.month=S.monthOf(last);
+  if (weekly.month && !state.data.byMonth.has(weekly.month))weekly.month='';
+  if (weekly.year && !months.some(m=>m.startsWith(weekly.year+'-')))weekly.year='';
   if (!state.from)state.from=state.month+'-01';
   if (!state.to)state.to=last;
   if (state.logMonth!=='all'&&!months.includes(state.logMonth))state.logMonth='all';
@@ -240,9 +328,9 @@ function render(){
   if (!state.data)return;
   showCloudStatus();
   state.view=location.hash.slice(1);
-  if(!['overview','log','compare','records'].includes(state.view))state.view='overview';
+  if(!['overview','weekly','log','compare','records'].includes(state.view))state.view='overview';
   for(const a of document.querySelectorAll('nav a')){if(a.hash==='#'+state.view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
-  charts=[];const views={overview,log:dailyLog,compare:comparison,records:recordPage};
+  charts=[];const views={overview,weekly:weeklyPage,log:dailyLog,compare:comparison,records:recordPage};
   $('main').innerHTML=views[state.view]();
   for(const box of document.querySelectorAll('[data-chart]')){
     const svg=box.querySelector('svg'),tip=box.querySelector('.chart-tooltip'),line=box.querySelector('.cross'),c=charts[+box.dataset.chart];
@@ -439,6 +527,12 @@ $('main').onclick=e=>{
   if(b.dataset.records)state.records=b.dataset.records;
   const months=state.data?.months||[], i=months.indexOf(state.month);
   switch(b.dataset.act){
+    case 'prev-week':weekly.start=S.add(selectedWeek(),-7);break;
+    case 'next-week':{
+      const next=S.add(selectedWeek(),7);
+      weekly.start=next>=weekBounds().latest ? null : next;
+      break;
+    }
     case 'json':downloadFile(new Blob([JSON.stringify(Object.fromEntries(state.data.rows.map(r=>[r.date,r.steps])),null,2)+'\n'],{type:'application/json'}),'steps.json');return;
     case 'portable':savePortable().catch(()=>toast('Could not download the tracker. Please try again.'));return;case 'export':exportData();return;case 'retry':boot();return;
     case 'prev-month':state.month=months[i-1]||state.month;break;case 'next-month':state.month=months[i+1]||state.month;break;
@@ -446,9 +540,28 @@ $('main').onclick=e=>{
     case 'all-months':state.compare=[...months];state.choicesOpen=true;break;case 'clear-months':state.compare=[];state.choicesOpen=true;break;
   }
   render();
+  if(b.dataset.act==='prev-week' || b.dataset.act==='next-week'){
+    const button=document.querySelector(`[data-act="${b.dataset.act}"]`);
+    (button.disabled ? $('week-date') : button).focus();
+  }
 };
 $('main').onchange=e=>{
   const target=e.target;
+  if(target.id==='week-date' && target.value && target.validity.valid){
+    const start=S.startOfWeek(target.value);
+    weekly.start=start===weekBounds().latest ? null : start;
+  }
+  if(target.id==='weekday-period'){
+    if(target.value==='custom' && weekly.from===null){
+      const {from,to}=weekdayRange();
+      weekly.from=from;weekly.to=to;
+    }
+    weekly.period=target.value;
+  }
+  if(target.id==='weekday-month')weekly.month=target.value;
+  if(target.id==='weekday-year')weekly.year=target.value;
+  if(target.id==='weekday-from')weekly.from=target.value;
+  if(target.id==='weekday-to')weekly.to=target.value;
   if(target.id==='month')state.month=target.value;
   if(target.id==='log-month'){state.logMonth=target.value;state.page=0;}
   if(target.id==='trend-range')state.range=target.value;
